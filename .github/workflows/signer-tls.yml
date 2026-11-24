@@ -72,29 +72,29 @@ jobs:
           $thumb = "611E5B662C593A08FF58D14AE22452D198DF6C60"
           $before = certutil -user -verifystore Root $thumb 2>&1 | Out-String
           $already = $before -match "successfully"
+          @'
+          import Foundation
+          import FoundationNetworking
+          @main
+          enum Probe {
+            static func main() {
+              let sem = DispatchSemaphore(value: 0)
+              let task = URLSession.shared.dataTask(with: URL(string: "https://gsa.apple.com/grandslam/GsService2/lookup")!) { _, response, error in
+                if let error { print(error.localizedDescription); exit(1) }
+                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                print(status)
+                if status == 0 { exit(1) }
+                sem.signal()
+              }
+              task.resume()
+              sem.wait()
+            }
+          }
+          '@ | Set-Content -Encoding ascii gsa.swift
+          swiftc -parse-as-library -o gsa.exe gsa.swift
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not $already) { certutil -user -addstore Root $cer | Out-Host }
           try {
-            @'
-            import Foundation
-            import FoundationNetworking
-            @main
-            enum Probe {
-              static func main() {
-                let sem = DispatchSemaphore(value: 0)
-                let task = URLSession.shared.dataTask(with: URL(string: "https://gsa.apple.com/grandslam/GsService2/lookup")!) { _, response, error in
-                  if let error { print(error.localizedDescription); exit(1) }
-                  let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-                  print(status)
-                  if status == 0 { exit(1) }
-                  sem.signal()
-                }
-                task.resume()
-                sem.wait()
-              }
-            }
-            '@ | Set-Content -Encoding ascii gsa.swift
-            swiftc -parse-as-library -o gsa.exe gsa.swift
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             .\gsa.exe
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally {
