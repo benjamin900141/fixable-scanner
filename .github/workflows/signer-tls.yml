@@ -104,6 +104,10 @@ jobs:
         run: |
           swift package resolve
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $responseFile = Get-ChildItem -Path .build\checkouts -Recurse -Filter AnisetteDataResponse.swift | Select-Object -First 1
+          if (-not $responseFile) { Write-Error "AnisetteDataResponse.swift was not fetched"; exit 1 }
+          (Get-Item $responseFile.FullName).IsReadOnly = $false
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE ".github\AnisetteDataResponse.swift") $responseFile.FullName -Force
           $client = Get-ChildItem -Path .build\checkouts -Recurse -Filter AnisetteClient.swift | Select-Object -First 1
           if (-not $client) { Write-Error "AnisetteClient.swift was not fetched"; exit 1 }
           $text = [System.IO.File]::ReadAllText($client.FullName)
@@ -116,7 +120,22 @@ jobs:
             $insert = [System.IO.File]::ReadAllText((Join-Path $env:GITHUB_WORKSPACE ".github\anisette-v1.swift"))
             if (-not $insert.EndsWith("`n")) { $insert += "`n" }
             $text = $text.Insert($at, $insert + "        ")
+            $fallback = 'if customHeaders?.clientInfo == nil { $0.clientInfo = self.clientInfo }'
+            $kept = 'if customHeaders?.clientInfo == nil, !self.clientInfo.contains("macOS;") { $0.clientInfo = self.clientInfo }'
+            if (-not $text.Contains($fallback)) { Write-Error "The default client header was not found"; exit 1 }
+            $text = $text.Replace($fallback, $kept)
             [System.IO.File]::WriteAllText($client.FullName, $text)
+          }
+          $handler = Join-Path (Get-Location) "CLI\CommandHandler.swift"
+          if (-not (Test-Path $handler)) { Write-Error "CommandHandler.swift was not fetched"; exit 1 }
+          (Get-Item $handler).IsReadOnly = $false
+          $handlerText = [System.IO.File]::ReadAllText($handler)
+          $otpPrint = 'print("OneTimePassword:        \(data.oneTimePassword)")'
+          if (-not $handlerText.Contains('print("ClientInfo:')) {
+            if (-not $handlerText.Contains($otpPrint)) { Write-Error "The anisette print was not found"; exit 1 }
+            $clientPrint = 'print("ClientInfo:            \(data.clientInfo)")' + "`r`n                " + $otpPrint
+            $handlerText = $handlerText.Replace($otpPrint, $clientPrint)
+            [System.IO.File]::WriteAllText($handler, $handlerText)
           }
           swift build -c release --disable-automatic-resolution `
             -Xcc -IC:\unicorn\include `
@@ -144,14 +163,11 @@ jobs:
               exit 1
             }
             $out = (Get-Content anisette-out.txt, anisette-err.txt -ErrorAction SilentlyContinue | Out-String)
-            if ($out -match "SEC_E_UNTRUSTED_ROOT|WebSockets not supported") {
-              Write-Host $out
-              exit 1
-            }
-            if ($out -notmatch "X-Apple-I-MD") {
-              Write-Host $out
-              exit 1
-            }
+            Remove-Item anisette-out.txt, anisette-err.txt -ErrorAction SilentlyContinue
+            if ($out -match "SEC_E_UNTRUSTED_ROOT") { Write-Host "The signer was rejected before it could read headers."; exit 1 }
+            if ($out -match "WebSockets not supported") { Write-Host "The signer opened a socket instead of reading headers."; exit 1 }
+            if ($out -match "macOS;") { Write-Host "The signer kept a rejected client header."; exit 1 }
+            if ($out -notmatch "OneTimePassword" -or $out -notmatch "Mac OS X") { Write-Host "The signer did not keep the server client info."; exit 1 }
             Write-Host "Anisette headers arrived"
           }
           Test-Anisette $exe
