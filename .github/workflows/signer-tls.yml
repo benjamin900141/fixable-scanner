@@ -53,6 +53,6 @@ jobs:
             }
           }
           '@ | Set-Content -Encoding ascii probe.swift
-          swiftc -o probe.exe probe.swift
+          swiftc -parse-as-library -o probe.exe probe.swift
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\probe.exe
