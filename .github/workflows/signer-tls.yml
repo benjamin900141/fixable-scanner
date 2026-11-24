@@ -72,10 +72,20 @@ jobs:
           Invoke-WebRequest -Uri "https://github.com/mahee96/unicorn/releases/download/2.1.4-multiarch/unicorn-windows-x64.zip" -OutFile C:\unicorn.zip
           Expand-Archive -Path C:\unicorn.zip -DestinationPath C:\unicorn -Force
           vcpkg install zlib:x64-windows-static --x-install-root=C:\vcpkg_installed
-          Copy-Item "C:\vcpkg_installed\x64-windows-static\lib\zlib.lib" "C:\unicorn\lib\zlib.lib" -Force
-          Copy-Item "C:\vcpkg_installed\x64-windows-static\lib\zlib.lib" "C:\unicorn\lib\z.lib" -Force
-          Copy-Item "C:\vcpkg_installed\x64-windows-static\include\zlib.h" "C:\unicorn\include\zlib.h" -Force
-          Copy-Item "C:\vcpkg_installed\x64-windows-static\include\zconf.h" "C:\unicorn\include\zconf.h" -Force
+          $lib = Get-ChildItem -Path C:\vcpkg_installed, C:\vcpkg -Filter zlib*.lib -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match "x64-windows-static" } |
+            Select-Object -First 1
+          $header = Get-ChildItem -Path C:\vcpkg_installed, C:\vcpkg -Filter zlib.h -Recurse -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+          if (-not $lib -or -not $header) {
+            Write-Error "zlib was installed but its library was not found"
+            exit 1
+          }
+          Copy-Item $lib.FullName "C:\unicorn\lib\zlib.lib" -Force
+          Copy-Item $lib.FullName "C:\unicorn\lib\z.lib" -Force
+          Copy-Item $header.FullName "C:\unicorn\include\zlib.h" -Force
+          $zconf = Join-Path $header.DirectoryName "zconf.h"
+          if (Test-Path $zconf) { Copy-Item $zconf "C:\unicorn\include\zconf.h" -Force }
           if (Test-Path "C:\unicorn\include\zconf.h") {
             (Get-Content C:\unicorn\include\zconf.h) -replace '.*unistd\.h.*', '// #include <unistd.h>' | Set-Content C:\unicorn\include\zconf.h
           }
