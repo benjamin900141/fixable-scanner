@@ -59,54 +59,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\probe.exe
 
-      - name: Trust Apple's published root for the GrandSlam host
-        shell: pwsh
-        run: |
-          $cer = Join-Path $env:RUNNER_TEMP "AppleIncRoot.cer"
-          Invoke-WebRequest -Uri "https://www.apple.com/appleca/AppleIncRootCertificate.cer" -OutFile $cer
-          $hash = (Get-FileHash $cer -Algorithm SHA256).Hash.ToLower()
-          if ($hash -ne "b0b1730ecbc7ff4505142c49f1295e6eda6bcaed7e2c68c5be91b5a11001f024") {
-            Write-Error "Apple root hash mismatch"
-            exit 1
-          }
-          $thumb = "611E5B662C593A08FF58D14AE22452D198DF6C60"
-          $before = certutil -user -verifystore Root $thumb 2>&1 | Out-String
-          $already = $before -match "successfully"
-          @'
-          import Foundation
-          import FoundationNetworking
-          @main
-          enum Probe {
-            static func main() {
-              let sem = DispatchSemaphore(value: 0)
-              let task = URLSession.shared.dataTask(with: URL(string: "https://gsa.apple.com/grandslam/GsService2/lookup")!) { _, response, error in
-                if let error { print(error.localizedDescription); exit(1) }
-                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-                print(status)
-                if status == 0 { exit(1) }
-                sem.signal()
-              }
-              task.resume()
-              sem.wait()
-            }
-          }
-          '@ | Set-Content -Encoding ascii gsa.swift
-          swiftc -parse-as-library -o gsa.exe gsa.swift
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (-not $already) { certutil -f -user -addstore Root $cer | Out-Host }
-          try {
-            $proc = Start-Process -FilePath .\gsa.exe -NoNewWindow -PassThru -RedirectStandardOutput gsa-out.txt -RedirectStandardError gsa-err.txt
-            if (-not $proc.WaitForExit(30000)) {
-              Stop-Process -Id $proc.Id -Force
-              Write-Error "The GrandSlam request did not finish."
-              exit 1
-            }
-            Get-Content gsa-out.txt, gsa-err.txt -ErrorAction SilentlyContinue
-            if ($proc.ExitCode -ne 0) { exit $proc.ExitCode }
-          } finally {
-            if (-not $already) { certutil -f -user -delstore Root $thumb | Out-Host }
-          }
-
       - name: Checkout SideSign
         uses: actions/checkout@v4
         with:
