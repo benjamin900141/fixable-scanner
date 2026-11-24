@@ -111,6 +111,8 @@ jobs:
           $at = $text.IndexOf($needle)
           if ($at -lt 0) { Write-Error "The anisette client no longer has the expected request"; exit 1 }
           if (-not $text.Contains("Direct anisette headers were not available.")) {
+            $item = Get-Item $client.FullName
+            $item.IsReadOnly = $false
             $insert = [System.IO.File]::ReadAllText((Join-Path $env:GITHUB_WORKSPACE ".github\anisette-v1.swift"))
             if (-not $insert.EndsWith("`n")) { $insert += "`n" }
             $text = $text.Insert($at, $insert + "        ")
