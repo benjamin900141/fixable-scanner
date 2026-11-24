@@ -1,0 +1,18 @@
+Fixable Scanner for iPhone and iPad
+Copyright (C) 2026 Fixable
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published
+by the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+The profile refresh uses SideStore's profile install, which is licensed under
+the GNU Affero General Public License, version 3.
+https://github.com/SideStore/SideStore
+https://github.com/SideStore/minimuxer
+https://www.gnu.org/licenses/agpl-3.0.html
+
+Sign-in to Apple uses SideSign, which is licensed under the GNU General
+Public License, version 3.
+https://github.com/SideStore/SideSign
+https://www.gnu.org/licenses/gpl-3.0.html

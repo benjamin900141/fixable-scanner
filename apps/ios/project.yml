@@ -1,0 +1,57 @@
+name: FixableScanner
+options:
+  bundleIdPrefix: app.fixable
+packages:
+  SideSign:
+    url: https://github.com/SideStore/SideSign.git
+    branch: main
+  Minimuxer:
+    url: https://github.com/SideStore/minimuxer.git
+    branch: develop
+  NIO:
+    url: https://github.com/apple/swift-nio.git
+    exact: 2.76.1
+  NIOSSL:
+    url: https://github.com/apple/swift-nio-ssl.git
+    exact: 2.29.0
+targets:
+  FixableScanner:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - Sources/FixableScanner
+    dependencies:
+      - package: SideSign
+        product: SideSign
+      - package: Minimuxer
+        product: Minimuxer
+      - package: NIO
+        product: NIOCore
+      - package: NIO
+        product: NIOPosix
+      - package: NIOSSL
+        product: NIOSSL
+    settings:
+      SWIFT_VERSION: "5"
+      PRODUCT_BUNDLE_IDENTIFIER: app.fixable.scanner
+      TARGETED_DEVICE_FAMILY: "1,2"
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Fixable
+        CFBundleShortVersionString: "0.1.0"
+        UILaunchScreen: {}
+        NSCalendarsFullAccessUsageDescription: Fixable reads the calendars already on this device.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        LSApplicationQueriesSchemes:
+          - whatsapp
+          - whatsapp-smb
+          - googlegmail
+          - ms-outlook
+        CFBundleURLTypes:
+          - CFBundleURLName: app.fixable.scanner
+            CFBundleURLSchemes:
+              - fixable
+        UIBackgroundModes: []
