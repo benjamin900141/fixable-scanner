@@ -1,0 +1,27 @@
+name: signer-tls
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: SwiftyLab/setup-swift@v1
+        with:
+          swift-version: "6.0.3"
+      - name: Fetch a public page
+        shell: pwsh
+        run: |
+          @'
+          import Foundation
+          let sem = DispatchSemaphore(value: 0)
+          let task = URLSession.shared.dataTask(with: URL(string: "https://www.apple.com")!) { _, response, error in
+            if let error { print(error.localizedDescription); exit(1) }
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            print(status)
+            sem.signal()
+          }
+          task.resume()
+          sem.wait()
+          '@ | Set-Content -Encoding ascii probe.swift
+          swift probe.swift
