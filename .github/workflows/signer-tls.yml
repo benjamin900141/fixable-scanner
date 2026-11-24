@@ -93,12 +93,18 @@ jobs:
           '@ | Set-Content -Encoding ascii gsa.swift
           swiftc -parse-as-library -o gsa.exe gsa.swift
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (-not $already) { certutil -user -addstore Root $cer | Out-Host }
+          if (-not $already) { certutil -f -user -addstore Root $cer | Out-Host }
           try {
-            .\gsa.exe
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $proc = Start-Process -FilePath .\gsa.exe -NoNewWindow -PassThru -RedirectStandardOutput gsa-out.txt -RedirectStandardError gsa-err.txt
+            if (-not $proc.WaitForExit(30000)) {
+              Stop-Process -Id $proc.Id -Force
+              Write-Error "The GrandSlam request did not finish."
+              exit 1
+            }
+            Get-Content gsa-out.txt, gsa-err.txt -ErrorAction SilentlyContinue
+            if ($proc.ExitCode -ne 0) { exit $proc.ExitCode }
           } finally {
-            if (-not $already) { certutil -user -delstore Root $thumb | Out-Host }
+            if (-not $already) { certutil -f -user -delstore Root $thumb | Out-Host }
           }
 
       - name: Checkout SideSign
@@ -177,7 +183,13 @@ jobs:
           if (-not $exe) { Write-Error "sidesign.exe was not built"; exit 1 }
           Write-Host "Found binary at: $exe"
           function Test-Anisette($path) {
-            $out = & $path anisette --server https://mac-ani.jkcoxson.com 2>&1 | Out-String
+            $proc = Start-Process -FilePath $path -ArgumentList @("anisette","--server","https://mac-ani.jkcoxson.com") -NoNewWindow -PassThru -RedirectStandardOutput anisette-out.txt -RedirectStandardError anisette-err.txt
+            if (-not $proc.WaitForExit(60000)) {
+              Stop-Process -Id $proc.Id -Force
+              Write-Error "The anisette request did not finish."
+              exit 1
+            }
+            $out = (Get-Content anisette-out.txt, anisette-err.txt -ErrorAction SilentlyContinue | Out-String)
             if ($out -match "SEC_E_UNTRUSTED_ROOT|WebSockets not supported") {
               Write-Host $out
               exit 1
