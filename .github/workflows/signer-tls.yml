@@ -4,7 +4,7 @@ on:
 jobs:
   probe:
     runs-on: windows-2022
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - name: Setup MSVC Developer Environment
         uses: ilammy/msvc-dev-cmd@v1
@@ -56,3 +56,73 @@ jobs:
           swiftc -parse-as-library -o probe.exe probe.swift
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\probe.exe
+
+      - name: Checkout SideSign
+        uses: actions/checkout@v4
+        with:
+          repository: SideStore/SideSign
+          ref: v0.1.7
+          path: sidesign-src
+          submodules: recursive
+
+      - name: Install Unicorn and zlib
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path C:\unicorn\include, C:\unicorn\lib | Out-Null
+          Invoke-WebRequest -Uri "https://github.com/mahee96/unicorn/releases/download/2.1.4-multiarch/unicorn-windows-x64.zip" -OutFile C:\unicorn.zip
+          Expand-Archive -Path C:\unicorn.zip -DestinationPath C:\unicorn -Force
+          vcpkg install zlib:x64-windows-static --x-install-root=C:\vcpkg_installed
+          Copy-Item "C:\vcpkg_installed\x64-windows-static\lib\zlib.lib" "C:\unicorn\lib\zlib.lib" -Force
+          Copy-Item "C:\vcpkg_installed\x64-windows-static\lib\zlib.lib" "C:\unicorn\lib\z.lib" -Force
+          Copy-Item "C:\vcpkg_installed\x64-windows-static\include\zlib.h" "C:\unicorn\include\zlib.h" -Force
+          Copy-Item "C:\vcpkg_installed\x64-windows-static\include\zconf.h" "C:\unicorn\include\zconf.h" -Force
+          if (Test-Path "C:\unicorn\include\zconf.h") {
+            (Get-Content C:\unicorn\include\zconf.h) -replace '.*unistd\.h.*', '// #include <unistd.h>' | Set-Content C:\unicorn\include\zconf.h
+          }
+          "INCLUDE=$env:INCLUDE;C:\unicorn\include" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "LIB=$env:LIB;C:\unicorn\lib" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build the signer
+        shell: pwsh
+        working-directory: sidesign-src
+        env:
+          _CL_: "/D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH"
+        run: |
+          swift build -c release `
+            -Xcc -IC:\unicorn\include `
+            -Xcc -DWIN32=1 `
+            -Xcc -DZ_HAVE_UNISTD_H=0 `
+            -Xcc -D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH `
+            -Xcxx -D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH `
+            -Xcc -D_CRT_SECURE_NO_WARNINGS `
+            -Xcc -D_CRT_NONSTDC_NO_WARNINGS `
+            -Xswiftc -D_CRT_SECURE_NO_WARNINGS `
+            -Xswiftc -D_CRT_NONSTDC_NO_WARNINGS `
+            -Xcxx -IC:\unicorn\include `
+            -Xlinker /LIBPATH:C:\unicorn\lib `
+            -Xlinker C:\unicorn\lib\zlib.lib `
+            --product sidesign
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $exe = Get-ChildItem -Path .build -Filter sidesign.exe -Recurse | Where-Object { $_.FullName -like "*release*" } | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $exe) { Write-Error "sidesign.exe was not built"; exit 1 }
+          $bundle = Join-Path $env:GITHUB_WORKSPACE "signer-bundle"
+          New-Item -ItemType Directory -Force -Path $bundle | Out-Null
+          Copy-Item $exe (Join-Path $bundle "sidesign.exe")
+          $swift = Split-Path (Get-Command swift).Source
+          Copy-Item (Join-Path $swift "*.dll") $bundle -Force
+          if (-not (Test-Path (Join-Path $bundle "FoundationNetworking.dll"))) {
+            $hit = Get-ChildItem -Path "C:\hostedtoolcache\windows" -Filter FoundationNetworking.dll -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $hit) { Write-Error "FoundationNetworking.dll was not found"; exit 1 }
+            Copy-Item (Join-Path $hit.DirectoryName "*.dll") $bundle -Force
+          }
+          @'
+          SideSign 0.1.7 is GPL-3.0. The Swift 6.1.2 runtime beside it is Apache-2.0.
+          The Apple ID password is typed on this computer and sent only to Apple.
+          '@ | Set-Content -Encoding ascii (Join-Path $bundle "NOTICE.txt")
+          & (Join-Path $bundle "sidesign.exe") anisette --server https://www.apple.com
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sidesign-windows-x64
+          path: signer-bundle/**
