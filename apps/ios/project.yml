@@ -10,10 +10,10 @@ packages:
     branch: develop
   NIO:
     url: https://github.com/apple/swift-nio.git
-    exact: 2.76.1
+    exactVersion: 2.76.1
   NIOSSL:
     url: https://github.com/apple/swift-nio-ssl.git
-    exact: 2.29.0
+    exactVersion: 2.29.0
 targets:
   FixableScanner:
     type: application
