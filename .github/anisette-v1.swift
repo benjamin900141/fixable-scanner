@@ -8,7 +8,7 @@
                 )
                 let info = response.clientInfo ?? ""
                 if response.oneTimePassword.isEmpty || response.machineID.isEmpty || info.isEmpty || info.contains("macOS;") {
-                    throw AnisetteError.invalidAnisetteData
+                    throw AnisetteError.invalidResponse(reason: "The client header was rejected.")
                 }
                 let headers = AnisetteRequestHeaders.defaultHeaders
                     .applyingOverrides(customHeaders)
