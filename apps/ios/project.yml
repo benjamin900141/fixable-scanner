@@ -6,8 +6,7 @@ packages:
     url: https://github.com/SideStore/SideSign.git
     branch: main
   Minimuxer:
-    url: https://github.com/SideStore/minimuxer.git
-    branch: develop
+    path: Vendor/minimuxer
   NIO:
     url: https://github.com/apple/swift-nio.git
     exactVersion: 2.76.1
