@@ -79,6 +79,10 @@ enum PhoneScreen {
         await AccessibilityTree.shared.press(labels: [label], hold: true)
     }
 
+    static func dropText() async {
+        await AccessibilityTree.shared.dropText()
+    }
+
     static func scroll() async -> Bool {
         await AccessibilityTree.shared.scroll()
     }

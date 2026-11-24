@@ -35,12 +35,12 @@ final class AccessibilityTree: @unchecked Sendable {
                 self.pending = []
                 try await self.invoke("deviceSetAppMonitoringEnabled:", args: [.object(NSNumber(value: true))], expectsReply: false)
                 try await self.invoke("deviceInspectorSetMonitoredEventType:", args: [.object(NSNumber(value: 0))], expectsReply: false)
-                try await self.invoke("deviceInspectorMoveWithOptions:", args: [.object(self.moveOptions(direction: 5))], expectsReply: false)
+                try await self.invoke("deviceInspectorMoveWithOptions:", args: [.object(self.moveOptions(direction: 5) as NSDictionary)], expectsReply: false)
                 self.absorb(await self.collect(seconds: 1.2))
                 if let data = self.elements.values.first {
                     if let reply = try await self.invoke(
                         "deviceElement:valueForAttribute:",
-                        args: [.object(self.element(data)), .object(self.attribute("_AXHierarchyElementsAttribute"))],
+                        args: [.object(self.element(data) as NSDictionary), .object(self.attribute("_AXHierarchyElementsAttribute") as NSDictionary)],
                         expectsReply: true
                     ) {
                         self.absorb([reply])
@@ -48,7 +48,7 @@ final class AccessibilityTree: @unchecked Sendable {
                 }
                 if self.cached.isEmpty {
                     for _ in 0..<30 {
-                        try await self.invoke("deviceInspectorMoveWithOptions:", args: [.object(self.moveOptions(direction: 4))], expectsReply: false)
+                        try await self.invoke("deviceInspectorMoveWithOptions:", args: [.object(self.moveOptions(direction: 4) as NSDictionary)], expectsReply: false)
                         let batch = await self.collect(seconds: 0.35)
                         if batch.isEmpty { break }
                         let before = self.cached.count
@@ -74,7 +74,7 @@ final class AccessibilityTree: @unchecked Sendable {
                 var name = hold ? "Long Press" : "Activate"
                 if hold, let reply = try await self.invoke(
                     "deviceElement:valueForAttribute:",
-                    args: [.object(self.element(data)), .object(self.attribute("Actions"))],
+                    args: [.object(self.element(data) as NSDictionary), .object(self.attribute("Actions") as NSDictionary)],
                     expectsReply: true
                 ) {
                     let found = reply.texts.first { value in
@@ -87,7 +87,7 @@ final class AccessibilityTree: @unchecked Sendable {
                 }
                 try await self.invoke(
                     "deviceElement:performAction:withValue:",
-                    args: [.object(self.pressElement(data)), .object(self.action(code: code, name: name)), .int(0)],
+                    args: [.object(self.pressElement(data) as NSDictionary), .object(self.action(code: code, name: name) as NSDictionary), .int(0)],
                     expectsReply: false
                 )
                 return true
@@ -98,13 +98,21 @@ final class AccessibilityTree: @unchecked Sendable {
         }
     }
 
+    func dropText() async {
+        await run {
+            self.cached = []
+            self.elements = [:]
+            self.pending = []
+        }
+    }
+
     func scroll() async -> Bool {
         await run {
             let before = self.cached.map(\.text).joined(separator: "\n")
             do {
                 try await self.prepare()
                 for _ in 0..<6 {
-                    try await self.invoke("deviceInspectorMoveWithOptions:", args: [.object(self.moveOptions(direction: 4))], expectsReply: false)
+                    try await self.invoke("deviceInspectorMoveWithOptions:", args: [.object(self.moveOptions(direction: 4) as NSDictionary)], expectsReply: false)
                     self.absorb(await self.collect(seconds: 0.25))
                 }
             } catch {
@@ -190,7 +198,7 @@ final class AccessibilityTree: @unchecked Sendable {
             .channelInitializer { channel in
                 channel.pipeline.addHandler(pipe)
             }
-        var channel: Channel?
+        var channel: (any Channel)?
         var last: Error = TreeError.closed
         for _ in 0..<3 {
             do {
@@ -311,7 +319,7 @@ final class AccessibilityTree: @unchecked Sendable {
         pending = []
     }
 
-    private func moveOptions(direction: Int) -> NSDictionary {
+    private func moveOptions(direction: Int) -> [String: Any] {
         [
             "ObjectType": "passthrough",
             "Value": [
@@ -322,7 +330,7 @@ final class AccessibilityTree: @unchecked Sendable {
         ]
     }
 
-    private func pressElement(_ data: Data) -> NSDictionary {
+    private func pressElement(_ data: Data) -> [String: Any] {
         [
             "ObjectType": "AXAuditElement_v1",
             "Value": [
@@ -335,7 +343,7 @@ final class AccessibilityTree: @unchecked Sendable {
         ]
     }
 
-    private func element(_ data: Data) -> NSDictionary {
+    private func element(_ data: Data) -> [String: Any] {
         [
             "ObjectType": "AXAuditElement_v1",
             "Value": [
@@ -347,7 +355,7 @@ final class AccessibilityTree: @unchecked Sendable {
         ]
     }
 
-    private func attribute(_ name: String) -> NSDictionary {
+    private func attribute(_ name: String) -> [String: Any] {
         [
             "ObjectType": "AXAuditElementAttribute_v1",
             "Value": [
@@ -359,7 +367,7 @@ final class AccessibilityTree: @unchecked Sendable {
         ]
     }
 
-    private func action(code: String, name: String) -> NSDictionary {
+    private func action(code: String, name: String) -> [String: Any] {
         [
             "ObjectType": "AXAuditElementAttribute_v1",
             "Value": [
@@ -573,11 +581,11 @@ private func derLength(_ count: Int) -> Data {
 }
 
 private final class Link {
-    let channel: Channel
+    let channel: any Channel
     let pipe: BytePipe
     var nextIdentifier: UInt32 = 1
 
-    init(channel: Channel, pipe: BytePipe) {
+    init(channel: any Channel, pipe: BytePipe) {
         self.channel = channel
         self.pipe = pipe
     }

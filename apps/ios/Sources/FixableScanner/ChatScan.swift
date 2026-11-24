@@ -115,30 +115,43 @@ enum ChatScan {
             let rows = await PhoneScreen.rows().filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }
             if rows.isEmpty {
                 unreadable += 1
+                if !(await PhoneScreen.scroll()) { break }
                 try? await Task.sleep(nanoseconds: 500_000_000)
                 continue
             }
             let oldest = rows.compactMap { DateParser.parse($0.text, now: now) }.min()
             if let oldest, oldest < window {
-                if await postLines(token: token, app: app, chat: chat, screen: screen, lines: state.lines + rows.map(\.text), rowId: rowId) { posted += 1 }
+                if await postLines(token: token, app: app, chat: chat, screen: screen, lines: state.lines + rows.map(\.text), rowId: rowId) {
+                    posted += 1
+                    await PhoneScreen.dropText()
+                }
                 return (unreadable, posted)
             }
             let signature = rows.map(\.text).joined(separator: "\n").prefix(400)
             let step = ScreenWalk.row(state: state, key: String(signature), text: String(signature), loading: false, windowStart: window)
             state = step.0
             if step.1 == "stop" {
-                if await postLines(token: token, app: app, chat: chat, screen: screen, lines: state.lines, rowId: rowId) { posted += 1 }
+                if await postLines(token: token, app: app, chat: chat, screen: screen, lines: state.lines, rowId: rowId) {
+                    posted += 1
+                    await PhoneScreen.dropText()
+                }
                 return (unreadable, posted)
             }
             if step.1 == "read" && state.lines.count >= 8 {
-                if await postLines(token: token, app: app, chat: chat, screen: screen, lines: state.lines, rowId: rowId) { posted += 1 }
+                if await postLines(token: token, app: app, chat: chat, screen: screen, lines: state.lines, rowId: rowId) {
+                    posted += 1
+                    await PhoneScreen.dropText()
+                }
                 screen += 1
                 state.lines = []
             }
             _ = await PhoneScreen.scroll()
             try? await Task.sleep(nanoseconds: 450_000_000)
         }
-        if await postLines(token: token, app: app, chat: chat, screen: screen, lines: state.lines, rowId: rowId) { posted += 1 }
+        if await postLines(token: token, app: app, chat: chat, screen: screen, lines: state.lines, rowId: rowId) {
+            posted += 1
+            await PhoneScreen.dropText()
+        }
         return (unreadable, posted)
     }
 
