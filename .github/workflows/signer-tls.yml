@@ -6,6 +6,8 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 45
     steps:
+      - uses: actions/checkout@v4
+
       - name: Setup MSVC Developer Environment
         uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -57,6 +59,48 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\probe.exe
 
+      - name: Trust Apple's published root for the GrandSlam host
+        shell: pwsh
+        run: |
+          $cer = Join-Path $env:RUNNER_TEMP "AppleIncRoot.cer"
+          Invoke-WebRequest -Uri "https://www.apple.com/appleca/AppleIncRootCertificate.cer" -OutFile $cer
+          $hash = (Get-FileHash $cer -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne "b0b1730ecbc7ff4505142c49f1295e6eda6bcaed7e2c68c5be91b5a11001f024") {
+            Write-Error "Apple root hash mismatch"
+            exit 1
+          }
+          $thumb = "611E5B662C593A08FF58D14AE22452D198DF6C60"
+          $before = certutil -user -verifystore Root $thumb 2>&1 | Out-String
+          $already = $before -match "successfully"
+          if (-not $already) { certutil -user -addstore Root $cer | Out-Host }
+          try {
+            @'
+            import Foundation
+            import FoundationNetworking
+            @main
+            enum Probe {
+              static func main() {
+                let sem = DispatchSemaphore(value: 0)
+                let task = URLSession.shared.dataTask(with: URL(string: "https://gsa.apple.com/grandslam/GsService2/lookup")!) { _, response, error in
+                  if let error { print(error.localizedDescription); exit(1) }
+                  let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                  print(status)
+                  if status == 0 { exit(1) }
+                  sem.signal()
+                }
+                task.resume()
+                sem.wait()
+              }
+            }
+            '@ | Set-Content -Encoding ascii gsa.swift
+            swiftc -parse-as-library -o gsa.exe gsa.swift
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            .\gsa.exe
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            if (-not $already) { certutil -user -delstore Root $thumb | Out-Host }
+          }
+
       - name: Checkout SideSign
         uses: actions/checkout@v4
         with:
@@ -100,7 +144,21 @@ jobs:
         env:
           _CL_: "/D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH"
         run: |
-          swift build -c release `
+          swift package resolve
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $client = Get-ChildItem -Path .build\checkouts -Recurse -Filter AnisetteClient.swift | Select-Object -First 1
+          if (-not $client) { Write-Error "AnisetteClient.swift was not fetched"; exit 1 }
+          $text = [System.IO.File]::ReadAllText($client.FullName)
+          $needle = "let (adiPbData, generatedBlob, cleanup) = try await resolveProvisioningBlob("
+          $at = $text.IndexOf($needle)
+          if ($at -lt 0) { Write-Error "The anisette client no longer has the expected request"; exit 1 }
+          if (-not $text.Contains("Direct anisette headers were not available.")) {
+            $insert = [System.IO.File]::ReadAllText((Join-Path $env:GITHUB_WORKSPACE ".github\anisette-v1.swift"))
+            if (-not $insert.EndsWith("`n")) { $insert += "`n" }
+            $text = $text.Insert($at, $insert + "        ")
+            [System.IO.File]::WriteAllText($client.FullName, $text)
+          }
+          swift build -c release --disable-automatic-resolution `
             -Xcc -IC:\unicorn\include `
             -Xcc -DWIN32=1 `
             -Xcc -DZ_HAVE_UNISTD_H=0 `
@@ -118,8 +176,19 @@ jobs:
           $exe = Get-ChildItem -Path .build -Filter sidesign.exe -Recurse | Where-Object { $_.FullName -like "*release*" } | Select-Object -First 1 -ExpandProperty FullName
           if (-not $exe) { Write-Error "sidesign.exe was not built"; exit 1 }
           Write-Host "Found binary at: $exe"
-          & $exe anisette --server https://www.apple.com
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          function Test-Anisette($path) {
+            $out = & $path anisette --server https://mac-ani.jkcoxson.com 2>&1 | Out-String
+            if ($out -match "SEC_E_UNTRUSTED_ROOT|WebSockets not supported") {
+              Write-Host $out
+              exit 1
+            }
+            if ($out -notmatch "X-Apple-I-MD") {
+              Write-Host $out
+              exit 1
+            }
+            Write-Host "Anisette headers arrived"
+          }
+          Test-Anisette $exe
           $bundle = Join-Path $env:GITHUB_WORKSPACE "signer-bundle"
           New-Item -ItemType Directory -Force -Path $bundle | Out-Null
           Copy-Item $exe (Join-Path $bundle "sidesign.exe")
@@ -133,7 +202,9 @@ jobs:
           @'
           SideSign 0.1.7 is GPL-3.0. The Swift 6.1.2 runtime beside it is Apache-2.0.
           The Apple ID password is typed on this computer and sent only to Apple.
+          The Windows build reads the anisette server's existing headers before opening a socket.
           '@ | Set-Content -Encoding ascii (Join-Path $bundle "NOTICE.txt")
+          Test-Anisette (Join-Path $bundle "sidesign.exe")
 
       - uses: actions/upload-artifact@v4
         with:
