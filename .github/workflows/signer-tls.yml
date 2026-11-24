@@ -117,6 +117,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $exe = Get-ChildItem -Path .build -Filter sidesign.exe -Recurse | Where-Object { $_.FullName -like "*release*" } | Select-Object -First 1 -ExpandProperty FullName
           if (-not $exe) { Write-Error "sidesign.exe was not built"; exit 1 }
+          Write-Host "Found binary at: $exe"
+          & $exe anisette --server https://www.apple.com
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $bundle = Join-Path $env:GITHUB_WORKSPACE "signer-bundle"
           New-Item -ItemType Directory -Force -Path $bundle | Out-Null
           Copy-Item $exe (Join-Path $bundle "sidesign.exe")
@@ -131,8 +134,6 @@ jobs:
           SideSign 0.1.7 is GPL-3.0. The Swift 6.1.2 runtime beside it is Apache-2.0.
           The Apple ID password is typed on this computer and sent only to Apple.
           '@ | Set-Content -Encoding ascii (Join-Path $bundle "NOTICE.txt")
-          & (Join-Path $bundle "sidesign.exe") anisette --server https://www.apple.com
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - uses: actions/upload-artifact@v4
         with:
