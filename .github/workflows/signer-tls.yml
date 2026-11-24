@@ -72,15 +72,28 @@ jobs:
           Invoke-WebRequest -Uri "https://github.com/mahee96/unicorn/releases/download/2.1.4-multiarch/unicorn-windows-x64.zip" -OutFile C:\unicorn.zip
           Expand-Archive -Path C:\unicorn.zip -DestinationPath C:\unicorn -Force
           vcpkg install zlib:x64-windows-static --x-install-root=C:\vcpkg_installed
-          $lib = Get-ChildItem -Path C:\vcpkg_installed, C:\vcpkg -Filter zlib*.lib -Recurse -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -match "x64-windows-static" } |
-            Select-Object -First 1
-          $header = Get-ChildItem -Path C:\vcpkg_installed, C:\vcpkg -Filter zlib.h -Recurse -ErrorAction SilentlyContinue |
-            Select-Object -First 1
+          $libs = @()
+          foreach ($root in @("C:\vcpkg", "C:\vcpkg_installed")) {
+            if (Test-Path $root) {
+              $libs += Get-ChildItem -Path $root -Recurse -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match "^(zlib|zlibstatic|zs|libz)\.lib$" }
+            }
+          }
+          $lib = $libs | Select-Object -First 1
+          $header = $null
+          foreach ($root in @("C:\vcpkg", "C:\vcpkg_installed")) {
+            if (-not $header -and (Test-Path $root)) {
+              $header = Get-ChildItem -Path $root -Filter zlib.h -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+            }
+          }
           if (-not $lib -or -not $header) {
-            Write-Error "zlib was installed but its library was not found"
+            Write-Host "zlib library was not found. Roots:"
+            foreach ($root in @("C:\vcpkg", "C:\vcpkg_installed")) {
+              if (Test-Path $root) { Get-ChildItem $root -Directory | Select-Object -ExpandProperty FullName }
+            }
             exit 1
           }
+          Write-Host "Using $($lib.FullName)"
           Copy-Item $lib.FullName "C:\unicorn\lib\zlib.lib" -Force
           Copy-Item $lib.FullName "C:\unicorn\lib\z.lib" -Force
           Copy-Item $header.FullName "C:\unicorn\include\zlib.h" -Force
