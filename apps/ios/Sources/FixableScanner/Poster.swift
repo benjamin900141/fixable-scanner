@@ -23,10 +23,11 @@ enum Poster {
 
     private static func post(_ path: String, token: String, body: [String: Any]) async -> Bool {
         var request = URLRequest(url: site.appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))))
-        if path == "/device/screen" { request.url = site.appendingPathComponent("device/screen") }
+        if path == "/device/screen" || path == "/device/calendar-row" {
+            request.url = URL(string: "https://hearty-mammoth-35.convex.site/device/screen")!
+        }
         if path == "/device/finish" { request.url = site.appendingPathComponent("device/finish") }
         if path == "/device/stop" { request.url = site.appendingPathComponent("device/stop") }
-        if path == "/device/calendar-row" { request.url = site.appendingPathComponent("device/screen") }
         request.httpMethod = "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "authorization")
         request.setValue("application/json", forHTTPHeaderField: "content-type")
