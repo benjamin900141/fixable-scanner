@@ -11,12 +11,15 @@ struct FixableApp: App {
                     guard url.scheme == "fixable" else { return }
                     let parts = URLComponents(url: url, resolvingAgainstBaseURL: false)
                     let saved = Bookmark.read()
+                    let incomingRun = parts?.queryItems?.first { $0.name == "run" }?.value ?? saved["runId"] ?? ""
+                    let sameRun = !incomingRun.isEmpty && incomingRun == (saved["runId"] ?? "")
                     Bookmark.save(
                         token: parts?.queryItems?.first { $0.name == "token" }?.value ?? saved["token"] ?? "",
-                        runId: parts?.queryItems?.first { $0.name == "run" }?.value ?? saved["runId"] ?? "",
+                        runId: incomingRun,
                         months: Int(parts?.queryItems?.first { $0.name == "months" }?.value ?? "") ?? Int(saved["months"] ?? "") ?? 1,
-                        chatKey: saved["chatKey"] ?? "",
-                        screenId: saved["screenId"] ?? ""
+                        chatKey: sameRun ? saved["chatKey"] ?? "" : "",
+                        screenId: sameRun ? saved["screenId"] ?? "" : "",
+                        chat: sameRun ? saved["chat"] ?? "" : ""
                     )
                 }
         }

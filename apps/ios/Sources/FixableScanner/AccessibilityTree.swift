@@ -72,17 +72,24 @@ final class AccessibilityTree: @unchecked Sendable {
                 try await self.prepare()
                 var code = "AXAction-2010"
                 var name = hold ? "Long Press" : "Activate"
-                if hold, let reply = try await self.invoke(
-                    "deviceElement:valueForAttribute:",
-                    args: [.object(self.element(data) as NSDictionary), .object(self.attribute("Actions") as NSDictionary)],
-                    expectsReply: true
-                ) {
-                    let found = reply.texts.first { value in
-                        value.contains("AXAction-") && (value.localizedCaseInsensitiveContains("long") || value.localizedCaseInsensitiveContains("menu") || value.localizedCaseInsensitiveContains("hold"))
+                if hold {
+                    guard let reply = try await self.invoke(
+                        "deviceElement:valueForAttribute:",
+                        args: [.object(self.element(data) as NSDictionary), .object(self.attribute("Actions") as NSDictionary)],
+                        expectsReply: true
+                    ) else { return false }
+                    let texts = reply.texts
+                    let named = texts.contains { value in
+                        value.localizedCaseInsensitiveContains("long") || value.localizedCaseInsensitiveContains("menu") || value.localizedCaseInsensitiveContains("hold")
                     }
-                    if let found {
-                        code = found
+                    let coded = texts.first { value in
+                        value.hasPrefix("AXAction-") && value != "AXAction-2010"
+                    }
+                    if let coded, named {
+                        code = coded
                         name = "Long Press"
+                    } else {
+                        return false
                     }
                 }
                 try await self.invoke(
@@ -147,17 +154,20 @@ final class AccessibilityTree: @unchecked Sendable {
         let lockdown = try await connect(port: Int(MinimuxerConstants.lockdowndPort))
         try await lockdown.sendLockdown(["Label": "fixable", "Request": "QueryType", "ProtocolVersion": "2"])
         _ = try await lockdown.readLockdown()
-        try await lockdown.sendLockdown([
-            "Label": "fixable",
-            "Request": "StartSession",
-            "HostID": pairing.hostID,
-            "SystemBUID": pairing.systemBUID,
-            "ProtocolVersion": "2",
-        ])
-        let started = try await lockdown.readLockdown()
-        if started["Error"] != nil { throw TreeError.refused }
-        if (started["EnableSessionSSL"] as? Bool) ?? true {
-            try await lockdown.upgrade(certificate: pairing.certificate, key: pairing.key)
+        var started: [String: Any] = [:]
+        if !pairing.remote {
+            try await lockdown.sendLockdown([
+                "Label": "fixable",
+                "Request": "StartSession",
+                "HostID": pairing.hostID,
+                "SystemBUID": pairing.systemBUID,
+                "ProtocolVersion": "2",
+            ])
+            started = try await lockdown.readLockdown()
+            if started["Error"] != nil { throw TreeError.refused }
+            if (started["EnableSessionSSL"] as? Bool) ?? true {
+                try await lockdown.upgrade(certificate: pairing.certificate, key: pairing.key)
+            }
         }
         var start: [String: Any] = [
             "Label": "fixable",
@@ -401,14 +411,33 @@ private struct PairingMaterial {
     var certificate: Data
     var key: Data
     var escrow: Data?
+    var remote = false
+}
+
+func preferredPairingProtocol() -> PairingProtocol? {
+    guard let record = pairingDictionary() else { return nil }
+    if record["public_key"] != nil && record["private_key"] != nil && (record["identifier"] as? String)?.isEmpty == false {
+        return .rppairing
+    }
+    if record["HostID"] != nil && record["HostCertificate"] != nil { return .lockdown }
+    return nil
+}
+
+private func pairingDictionary() -> [String: Any]? {
+    let url = URL(fileURLWithPath: ProfileRefresh.pairingPath())
+    guard let data = try? Data(contentsOf: url),
+          let parsed = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] else { return nil }
+    return parsed["PairRecord"] as? [String: Any] ?? parsed
 }
 
 private func pairingRecord() throws -> PairingMaterial {
-    let url = URL(fileURLWithPath: ProfileRefresh.pairingPath())
-    let data = try Data(contentsOf: url)
-    let parsed = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
-    let root = parsed as? [String: Any] ?? [:]
-    let record = root["PairRecord"] as? [String: Any] ?? root
+    guard let record = pairingDictionary() else { throw TreeError.refused }
+    if record["public_key"] != nil || record["private_key"] != nil || record["identifier"] != nil {
+        guard let identifier = record["identifier"] as? String, !identifier.isEmpty,
+              blob("public_key", record) != nil,
+              blob("private_key", record) != nil else { throw TreeError.refused }
+        return PairingMaterial(hostID: identifier, systemBUID: identifier, certificate: Data(), key: Data(), escrow: nil, remote: true)
+    }
     guard let hostID = record["HostID"] as? String,
           let systemBUID = record["SystemBUID"] as? String,
           let certificate = blob("HostCertificate", record),

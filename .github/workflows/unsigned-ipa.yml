@@ -1,6 +1,8 @@
 name: unsigned-ipa
 on:
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: macos-latest
@@ -12,6 +14,21 @@ jobs:
       - name: Archive the unsigned scanner
         working-directory: apps/ios
         run: sh build-ipa.sh
+      - name: Refuse a file that cannot send a screen
+        run: |
+          set -e
+          APP=$(find apps/ios/build/Fixable.xcarchive -type f -name FixableScanner | head -1)
+          test -n "$APP"
+          strings "$APP" | grep -F "/device/screen"
+          strings "$APP" | grep -F "hearty-mammoth-35.convex.site"
+          if strings "$APP" | grep -F "rapid-marmot-414"; then
+            echo "The file points at the private server."
+            exit 1
+          fi
+      - name: Replace the public iPhone file
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload 0.1.0 apps/ios/build/Fixable.ipa --clobber --repo "${{ github.repository }}"
       - uses: actions/upload-artifact@v4
         with:
           name: Fixable-ipa

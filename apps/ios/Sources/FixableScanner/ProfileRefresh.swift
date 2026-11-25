@@ -39,7 +39,8 @@ enum ProfileRefresh {
             runId: saved["runId"] ?? "",
             months: Int(saved["months"] ?? "") ?? 1,
             chatKey: saved["chatKey"] ?? "",
-            screenId: saved["screenId"] ?? ""
+            screenId: saved["screenId"] ?? "",
+            chat: saved["chat"] ?? ""
         )
         let before = daysLeft()
         if before >= 2 {
@@ -116,7 +117,7 @@ enum ProfileRefresh {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
         let mount = support?.appendingPathComponent("ddi", isDirectory: true)
         if let mount { try FileManager.default.createDirectory(at: mount, withIntermediateDirectories: true) }
-        try await mux.core.start(pairingFile: pairingPath(), mountPath: mount?.path ?? "", preferred: nil)
+        try await mux.core.start(pairingFile: pairingPath(), mountPath: mount?.path ?? "", preferred: preferredPairingProtocol())
         do {
             try await mux.core.installProvisioningProfile(profile: profile)
             try? await mux.core.stop()
