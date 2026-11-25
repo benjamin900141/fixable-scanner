@@ -17,17 +17,21 @@ jobs:
       - name: Refuse a file that cannot send a screen
         run: |
           set -e
-          find apps/ios/build -type f | head -40
-          APP=$(find apps/ios/build -type f \( -name FixableScanner -o -name Fixable \) | head -1)
+          APP=$(find apps/ios/build/Fixable.xcarchive -type f -name FixableScanner | head -1)
           test -n "$APP"
-          strings -a "$APP" > /tmp/narrow.txt
-          strings -a -e l "$APP" > /tmp/wide.txt
-          cat /tmp/narrow.txt /tmp/wide.txt | grep -F "/device/screen"
-          cat /tmp/narrow.txt /tmp/wide.txt | grep -F "hearty-mammoth-35.convex.site"
-          if cat /tmp/narrow.txt /tmp/wide.txt | grep -F "rapid-marmot-414"; then
-            echo "The file points at the private server."
-            exit 1
-          fi
+          export APP
+          python3 - <<'PY'
+          import os, pathlib
+          data = pathlib.Path(os.environ["APP"]).read_bytes()
+          def has(text):
+              raw = text.encode()
+              return raw in data or text.encode("utf-16le") in data
+          if not has("/device/screen") or not has("hearty-mammoth-35.convex.site"):
+              raise SystemExit("The built app cannot send a screen to the public server.")
+          if has("rapid-marmot-414"):
+              raise SystemExit("The file points at the private server.")
+          print("The built app can send a screen to the public server.")
+          PY
       - name: Replace the public iPhone file
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
