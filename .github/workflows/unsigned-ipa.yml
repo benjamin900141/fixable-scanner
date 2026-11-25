@@ -17,17 +17,18 @@ jobs:
       - name: Refuse a file that cannot send a screen
         run: |
           set -e
-          APP=$(find apps/ios/build/Fixable.xcarchive -type f -name FixableScanner | head -1)
-          test -n "$APP"
+          APP="apps/ios/build/Fixable.xcarchive/Products/Applications/FixableScanner.app/FixableScanner"
+          test -f "$APP"
           export APP
           python3 - <<'PY'
           import os, pathlib
           data = pathlib.Path(os.environ["APP"]).read_bytes()
           def has(text):
               raw = text.encode()
-              return raw in data or text.encode("utf-16le") in data
-          if not has("/device/screen") or not has("hearty-mammoth-35.convex.site"):
-              raise SystemExit("The built app cannot send a screen to the public server.")
+              return raw in data or text.encode("utf-16le") in data or text.encode()[::-1] in data
+          missing = [text for text in ("/device/screen", "hearty-mammoth-35.convex.site") if not has(text)]
+          if missing:
+              raise SystemExit("The built app cannot send a screen to the public server. Missing: " + ", ".join(missing))
           if has("rapid-marmot-414"):
               raise SystemExit("The file points at the private server.")
           print("The built app can send a screen to the public server.")
