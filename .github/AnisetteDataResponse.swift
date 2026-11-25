@@ -40,9 +40,15 @@ public struct AnisetteDataResponse: Sendable, Codable, Equatable, Hashable {
         }
         self.oneTimePassword = otp
         self.machineID = mid
-        self.clientInfo = dictionary[AnisetteConstants.Headers.clientInfo]
-        self.deviceID = dictionary[AnisetteConstants.Headers.deviceID]
-        self.localUserID = dictionary[AnisetteConstants.Headers.localUserID]
-        self.routingInfo = dictionary[AnisetteConstants.Headers.routingInfo]
+        self.clientInfo = header(dictionary, AnisetteConstants.Headers.clientInfo)
+        self.deviceID = header(dictionary, AnisetteConstants.Headers.deviceID)
+        self.localUserID = header(dictionary, AnisetteConstants.Headers.localUserID)
+        self.routingInfo = header(dictionary, AnisetteConstants.Headers.routingInfo)
     }
+}
+
+private func header(_ dictionary: [String: String], _ name: String) -> String? {
+    if let direct = dictionary[name], !direct.isEmpty { return direct }
+    let wanted = name.lowercased()
+    return dictionary.first { $0.key.lowercased() == wanted && !$0.value.isEmpty }?.value
 }
