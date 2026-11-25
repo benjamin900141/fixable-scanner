@@ -32,7 +32,7 @@ enum PhoneScreen {
         let mount = support?.appendingPathComponent("ddi", isDirectory: true)
         if let mount { try? FileManager.default.createDirectory(at: mount, withIntermediateDirectories: true) }
         do {
-            try await mux.core.start(pairingFile: ProfileRefresh.pairingPath(), mountPath: mount?.path ?? "", preferred: preferredPairingProtocol())
+            try await mux.core.start(pairingFile: ProfileRefresh.pairingPath(), mountPath: mount?.path ?? "", preferred: nil)
             let ready = await mux.core.isReady(withNetworkCheck: true, withDDIMountCheck: false)
             if case .failure = ready {
                 return "The phone's screen reader did not answer, so chats were not opened."

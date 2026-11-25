@@ -414,15 +414,6 @@ private struct PairingMaterial {
     var remote = false
 }
 
-func preferredPairingProtocol() -> PairingProtocol? {
-    guard let record = pairingDictionary() else { return nil }
-    if record["public_key"] != nil && record["private_key"] != nil && (record["identifier"] as? String)?.isEmpty == false {
-        return .rppairing
-    }
-    if record["HostID"] != nil && record["HostCertificate"] != nil { return .lockdown }
-    return nil
-}
-
 private func pairingDictionary() -> [String: Any]? {
     let url = URL(fileURLWithPath: ProfileRefresh.pairingPath())
     guard let data = try? Data(contentsOf: url),
