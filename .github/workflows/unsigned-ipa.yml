@@ -17,11 +17,14 @@ jobs:
       - name: Refuse a file that cannot send a screen
         run: |
           set -e
-          APP=$(find apps/ios/build/Fixable.xcarchive -type f -name FixableScanner | head -1)
+          find apps/ios/build -type f | head -40
+          APP=$(find apps/ios/build -type f \( -name FixableScanner -o -name Fixable \) | head -1)
           test -n "$APP"
-          strings "$APP" | grep -F "/device/screen"
-          strings "$APP" | grep -F "hearty-mammoth-35.convex.site"
-          if strings "$APP" | grep -F "rapid-marmot-414"; then
+          strings -a "$APP" > /tmp/narrow.txt
+          strings -a -e l "$APP" > /tmp/wide.txt
+          cat /tmp/narrow.txt /tmp/wide.txt | grep -F "/device/screen"
+          cat /tmp/narrow.txt /tmp/wide.txt | grep -F "hearty-mammoth-35.convex.site"
+          if cat /tmp/narrow.txt /tmp/wide.txt | grep -F "rapid-marmot-414"; then
             echo "The file points at the private server."
             exit 1
           fi
